@@ -1,0 +1,75 @@
+management:
+  observations:
+    key-values:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+    enabled: true
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${spring.application.name}
+    username: miliariadnane
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: none
+  rabbitmq:
+    addresses: rabbitmq:5672
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath*:db/schema.sql
+      data-locations: classpath*:db/data.sql
+      platform: postgresql
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak:8080/realms/demo-realm
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka
+
+jwt:
+  auth:
+    converter:
+      principle-attribute: preferred_username
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      productService:
+        sliding-window-type: count_based
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+      orderService:
+        sliding-window-type: count_based
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+  retry:
+    instances:
+      orderService:
+        max-attempts: 3
+        wait-duration: 1000ms
+  timelimiter:
+    instances:
+      orderService:
+        timeout-duration: 3s

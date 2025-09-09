@@ -1,0 +1,22 @@
+server:
+  port: 8004
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: notification
+  config:
+    import:
+      - "classpath:shared-application-${spring.profiles.active}.yml"
+      - "classpath:clients-${spring.profiles.active}.properties"
+      - "classpath:amqp-${spring.profiles.active}.properties"
+
+#RabbitMQ
+rabbitmq:
+  exchange:
+    internal: internal.exchange
+  queue:
+    notification: notification.queue
+  routing-key:
+    internal-notification: internal.notification.routing-key

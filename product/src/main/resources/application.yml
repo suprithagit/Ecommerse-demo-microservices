@@ -1,0 +1,11 @@
+server:
+  port: 8002
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: product
+  config:
+    import:
+      - "classpath:shared-application-${spring.profiles.active}.yml"

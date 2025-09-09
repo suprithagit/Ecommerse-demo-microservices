@@ -1,0 +1,10 @@
+server:
+  port: 8006
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: apikey-manager
+  config:
+    import: classpath:shared-application-${spring.profiles.active}.yml

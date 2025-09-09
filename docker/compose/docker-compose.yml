@@ -1,0 +1,297 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:15.5-alpine
+    environment:
+      POSTGRES_USER: miliariadnane
+      POSTGRES_PASSWORD: password
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+      - ../config/postgres/init.sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5434:5432"
+    networks:
+      - postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U miliariadnane" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - postgres
+    restart: unless-stopped
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - spring
+      - monitoring
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9411/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # default port for RabbitMQ
+      - "15672:15672" # management port
+    networks:
+      - spring
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - customer
+      - product
+      - order
+      - notification
+      - payment
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+  keycloak:
+    container_name: keycloak
+    image: quay.io/keycloak/keycloak:25.0.1
+    command: start-dev --import-realm
+    volumes:
+      - ../config/keycloak:/opt/keycloak/data/import
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_URL_PORT: 5432
+      KC_DB_USERNAME: miliariadnane
+      KC_DB_PASSWORD: password
+    ports:
+      - "8180:8080"
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      postgres:
+        condition: service_healthy
+  node-exporter:
+    image: prom/node-exporter:latest # Prometheus component that exports system metrics to Prometheus
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - grafana
+  eureka-server:
+    image: miliariadnane/eureka-server:latest
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - monitoring
+    depends_on:
+      - zipkin
+  gateway:
+    image: miliariadnane/gateway:latest
+    container_name: gateway
+    ports:
+      - "8765:8765"
+    networks:
+      - spring
+      - monitoring
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - zipkin
+      - eureka-server
+  customer:
+    image: miliariadnane/customer:latest
+    container_name: customer
+    ports:
+      - "8001:8001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+  product:
+    image: miliariadnane/product:latest
+    container_name: product
+    ports:
+      - "8002:8002"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+  order:
+    image: miliariadnane/order:latest
+    container_name: order
+    ports:
+      - "8003:8003"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+  notification:
+    image: miliariadnane/notification:latest
+    container_name: notification
+    ports:
+      - "8004:8004"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+  payment:
+    image: miliariadnane/payment:latest
+    container_name: payment
+    ports:
+      - "8005:8005"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+  apikey-manager:
+    image: miliariadnane/apikey-manager:latest
+    container_name: apikey-manager
+    ports:
+      - "8006:8006"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - spring
+      - postgres
+      - monitoring
+    depends_on:
+      - eureka-server
+      - gateway
+      - postgres
+      - zipkin
+      - rabbitmq
+      - keycloak
+
+networks:
+  postgres:
+    driver: bridge
+  spring:
+    driver: bridge
+  monitoring:
+    driver: bridge
+volumes:
+  postgres:
+  pgadmin:
+  prometheus_data: {}

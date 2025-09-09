@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apikey-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apikey-manager
+  template:
+    metadata:
+      labels:
+        app: apikey-manager
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8006"
+    spec:
+      containers:
+        - name: apikey-manager
+          image: miliariadnane/apikey-manager:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8006
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: kube
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: "200m"
+      restartPolicy: Always 

@@ -1,0 +1,14 @@
+server:
+  port: 8001
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: customer
+  config:
+    import:
+      - "classpath:shared-application-${spring.profiles.active}.yml"
+      - "classpath:clients-${spring.profiles.active}.properties"
+      - "classpath:amqp-${spring.profiles.active}.properties"
+
